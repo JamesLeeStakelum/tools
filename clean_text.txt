@@ -1,0 +1,106 @@
+import re
+import unicodedata # For category-based filtering of Unicode characters
+
+def clean_text_content(text: str) -> str:
+    """
+    Removes unwanted Unicode characters—such as a wide range of emoji pictographs,
+    smart quotes, em-dashes, zero-width code points, and Unicode control/format
+    characters (except line feed, carriage return, and tab)—while preserving
+    accented letters, non-Latin scripts, currency symbols, and common typographical
+    punctuation. It also normalizes specific punctuation to ASCII equivalents
+    and converts all line endings to Unix-style (LF).
+
+    Args:
+        text (str): The input string to be cleaned. If not a string, an empty
+                    string is returned.
+
+    Returns:
+        str: The cleaned and normalized string.
+    """
+
+    # 0. Guard against None or non-string inputs.
+    # Ensures that subsequent string operations do not raise TypeErrors.
+    if not isinstance(text, str):
+        return ""
+
+    # 1. Remove a wide range of Emoji and Pictograph characters.
+    # This regular expression targets multiple Unicode blocks commonly associated
+    # with emojis, symbols, and pictographs. Using re.UNICODE flag ensures
+    # the regex correctly interprets these high-codepoint characters.
+    emoji_pattern = re.compile(
+        "["
+        "\U0001F600-\U0001F64F"  # Emoticons
+        "\U0001F300-\U0001F5FF"  # Miscellaneous Symbols and Pictographs
+        "\U0001F680-\U0001F6FF"  # Transport and Map Symbols
+        "\U0001F700-\U0001F77F"  # Alchemical Symbols (extended from other expert's suggestion)
+        "\U0001F780-\U0001F7FF"  # Geometric Shapes Extended-A (extended from other expert's suggestion)
+        "\U0001F800-\U0001F8FF"  # Supplemental Arrows-C (extended from other expert's suggestion)
+        "\U0001F900-\U0001F9FF"  # Supplemental Symbols and Pictographs (extended from other expert's suggestion)
+        "\U0001FA00-\U0001FA6F"  # Chess Symbols (extended from other expert's suggestion)
+        "\U0001FA70-\U0001FAFF"  # Symbols and Pictographs Extended-B (extended from other expert's suggestion)
+        "\u2600-\u26FF"          # Miscellaneous Symbols
+        "\u2700-\u27BF"          # Dingbats
+        "]+",
+        flags=re.UNICODE
+    )
+    text = emoji_pattern.sub('', text)
+
+    # 2. Normalize common "smart" typographical punctuation to ASCII equivalents.
+    # This step ensures consistency across different text sources.
+
+    # 2a. Normalize "smart" double quotes: Left/Right double quotes (U+201C, U+201D)
+    # and angle quotes (U+00AB, U+00BB) to a straight double quote (").
+    text = re.sub(r'[\u201C\u201D\u00AB\u00BB]', r'"', text)
+
+    # 2b. Normalize "smart" single quotes and apostrophes: Left/Right single quotes
+    # (U+2018, U+2019) to a straight single quote (').
+    text = re.sub(r'[\u2018\u2019]', r"'", text)
+
+    # 2c. Normalize en-dash (U+2013) and em-dash (U+2014) to two hyphens ("--").
+    text = re.sub(r'[\u2013\u2014]', r'--', text)
+
+    # 2d. Normalize horizontal ellipsis (U+2026) to three ASCII dots ("...").
+    text = text.replace('\u2026', '...')
+
+    # 3. Remove invisible and non-displaying control/formatting characters.
+
+    # 3a. Remove zero-width characters: These characters control text rendering
+    # but are typically invisible and can interfere with parsing or display.
+    # U+200B (ZERO WIDTH SPACE)
+    # U+200C (ZERO WIDTH NON-JOINER)
+    # U+200D (ZERO WIDTH JOINER)
+    # U+FEFF (ZERO WIDTH NO-BREAK SPACE) - also used as BOM, but here in middle of text
+    text = re.sub(r'[\u200B\u200C\u200D\uFEFF]', r'', text)
+
+    # 3b. Remove Variation Selectors (U+FE0E, U+FE0F).
+    # These characters determine text or emoji presentation style and are usually
+    # not needed in plain text content.
+    text = re.sub(r'[\uFE0E\uFE0F]', r'', text)
+
+    # 4. Remove "Other" category Unicode characters (\p{C} equivalent in Perl).
+    # This targets characters in the Unicode "Other" category (Control, Format,
+    # Unassigned, Private Use, Surrogates), which are generally unwanted in clean text.
+    # We explicitly preserve essential whitespace control characters: line feed (\n),
+    # carriage return (\r), and tab (\t).
+    cleaned_chars = []
+    for char in text:
+        # Preserve fundamental structural whitespace characters.
+        if char == '\r' or char == '\n' or char == '\t':
+            cleaned_chars.append(char)
+        else:
+            # Check the Unicode General Category of the character.
+            # Categories starting with 'C' are "Other" (Cc, Cf, Cn, Co, Cs).
+            # Characters not in the 'C' category are kept. This ensures accented
+            # characters, non-Latin scripts, currency symbols, and most punctuation
+            # and symbols are preserved.
+            if not unicodedata.category(char).startswith('C'):
+                cleaned_chars.append(char)
+            # Otherwise, the character is an unwanted 'C' category character and is filtered out.
+
+    text = "".join(cleaned_chars)
+
+    # 5. Normalize line endings: convert CRLF (\r\n) and CR (\r) to LF (\n).
+    # Ensures consistent line breaks regardless of the originating operating system.
+    text = text.replace('\r\n', '\n').replace('\r', '\n')
+
+    return text
