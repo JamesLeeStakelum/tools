@@ -1,0 +1,158 @@
+import chardet
+import codecs # Provides BOM constants for explicit handling
+
+def read_file_content(file_path: str,
+                      fallback_encodings: list[str] = None,
+                      chardet_confidence_threshold: float = 0.7,
+                      strict_decoding_attempts: bool = True,
+                      normalize_line_endings: bool = True) -> str | None:
+    """
+    Reads a text file with robust encoding detection and error handling,
+    returning only the decoded content as a string.
+
+    This function is designed for maximum robustness, blending the strengths of
+    automatic detection, controlled fallbacks, and resilient error handling.
+
+    Args:
+        file_path (str): The path to the file to read.
+        fallback_encodings (list[str], optional): An ordered list of encodings
+            to try if chardet's detection isn't confident or if initial strict
+            attempts fail. Defaults to a comprehensive list of common encodings.
+            It's recommended to include 'utf-8' in this list.
+        chardet_confidence_threshold (float, optional): The minimum confidence
+            score (0.0-1.0) from 'chardet' required for its detected encoding
+            to be used in a strict first attempt. Defaults to 0.7.
+        strict_decoding_attempts (bool, optional): If True, the function first
+            attempts to decode using 'errors="strict"' with various encodings.
+            If all strict attempts fail, it then falls back to 'utf-8' with
+            'errors="replace"'. If False, it skips all strict attempts and goes
+            directly to 'utf-8' with 'errors="replace"'. Defaults to True.
+        normalize_line_endings (bool, optional): If True, converts all line
+            endings ('\\r\\n', '\\r') to Unix-style ('\\n'). Defaults to True.
+
+    Returns:
+        str: The decoded content of the file.
+             Returns an empty string if the file is empty.
+             Returns None if the file cannot be opened (e.g., does not exist,
+             permission error) or if an unexpected decoding error occurs even
+             with 'replace' handling.
+    """
+    # Initialize default fallback encodings if the user doesn't provide any.
+    if fallback_encodings is None:
+        fallback_encodings = [
+            'utf-8', 'iso-8859-1', 'windows-1252', 'ascii',
+            'utf-16-le', 'utf-16-be', 'iso-8859-15',
+            'windows-1250', 'windows-1251', 'shift_jis',
+            'euc_jp', 'big5'
+        ]
+
+    raw_data = None
+    try:
+        # Step 1: Read the entire file in binary mode.
+        with open(file_path, 'rb') as file:
+            raw_data = file.read()
+            # If the file is empty, no decoding is needed.
+            if not raw_data:
+                # print(f"Warning: File '{file_path}' is empty.") # Optional: print a warning
+                return ""
+    except FileNotFoundError:
+        # Print an error message for critical issues like file not found.
+        print(f"ERROR: File not found: '{file_path}'")
+        return None
+    except IOError as e:
+        # Print an error message for other I/O errors.
+        print(f"ERROR: Error reading file '{file_path}' in binary mode: {e}")
+        return None
+
+    # Step 2: Use chardet for an initial, probabilistic encoding detection.
+    detection = chardet.detect(raw_data)
+    detected_encoding = detection.get('encoding')
+    confidence = detection.get('confidence', 0.0) or 0.0
+
+    # No print for successful chardet detection unless you add it back.
+    # print(f"INFO: Chardet detected encoding: '{detected_encoding}' with confidence: {confidence:.2f}")
+
+    content = None
+    
+    # Define common Byte Order Marks (BOMs) and their associated standard encoding labels.
+    boms = {
+        codecs.BOM_UTF8: 'utf-8',
+        codecs.BOM_UTF16_LE: 'utf-16-le',
+        codecs.BOM_UTF16_BE: 'utf-16-be'
+    }
+
+    # Step 3: Build the prioritized list of encodings for strict decoding attempts.
+    strict_attempt_encodings = []
+
+    # 3a. Prioritize chardet's guess if its confidence meets the threshold.
+    if detected_encoding and confidence >= chardet_confidence_threshold:
+        strict_attempt_encodings.append(detected_encoding)
+    
+    # 3b. Explicitly ensure 'utf-8' is a high priority.
+    if 'utf-8' not in strict_attempt_encodings:
+        strict_attempt_encodings.insert(0, 'utf-8')
+    
+    # 3c. Add the remaining user-defined fallback encodings, avoiding duplicates.
+    for enc in fallback_encodings:
+        if enc not in strict_attempt_encodings:
+            strict_attempt_encodings.append(enc)
+
+    # Step 4: Attempt decoding strategies in order of strictness and likelihood.
+    if strict_decoding_attempts:
+        # print(f"INFO: Attempting strict decoding for '{file_path}' with prioritized encodings: {strict_attempt_encodings}") # Optional: print info
+        for current_encoding in strict_attempt_encodings:
+            bytes_to_decode_for_attempt = raw_data
+            
+            # Sub-step 4a: Check for and strip BOMs *before* decoding this attempt.
+            for bom_bytes, bom_encoding_label in boms.items():
+                if bytes_to_decode_for_attempt.startswith(bom_bytes):
+                    norm_current_encoding = current_encoding.lower().replace('-', '_')
+                    norm_bom_encoding = bom_encoding_label.lower().replace('-', '_')
+
+                    if norm_bom_encoding == norm_current_encoding:
+                        bytes_to_decode_for_attempt = bytes_to_decode_for_attempt[len(bom_bytes):]
+                        # print(f"DEBUG: Stripped {bom_encoding_label.upper()} BOM before decoding with '{current_encoding}'.") # Optional: print debug
+                    # else:
+                        # print(f"DEBUG: File starts with {bom_encoding_label.upper()} BOM, but current attempt is '{current_encoding}'. Not stripping this BOM for this attempt.") # Optional: print debug
+                    break 
+
+            try:
+                # Sub-step 4b: Attempt strict decode.
+                content = bytes_to_decode_for_attempt.decode(current_encoding, errors='strict')
+                # print(f"INFO: Successfully decoded with '{current_encoding}' (strict).") # Optional: print info
+                break 
+            except (UnicodeDecodeError, LookupError) as e:
+                # print(f"DEBUG: Strict decode with '{current_encoding}' failed ({e}). Trying next encoding.") # Optional: print debug
+                content = None
+            except Exception as e:
+                # print(f"WARNING: Unexpected error during strict decode with '{current_encoding}': {e}") # Optional: print warning
+                content = None
+
+    # Step 5: Final Fallback - If no strict decode succeeded (or strict attempts were skipped).
+    if content is None:
+        # print(f"WARNING: No strict decoding succeeded for '{file_path}' (or strict attempts were skipped). Falling back to 'utf-8' with 'errors=replace'.") # Optional: print warning
+        try:
+            bytes_for_final_decode = raw_data
+            
+            # Explicit BOM stripping for the final 'utf-8' 'replace' attempt.
+            for bom_bytes, bom_encoding_label in boms.items():
+                if bytes_for_final_decode.startswith(bom_bytes):
+                    bytes_for_final_decode = bytes_for_final_decode[len(bom_bytes):]
+                    # print(f"DEBUG: Stripped {bom_encoding_label.upper()} BOM for final 'utf-8' replace decode (best effort).") # Optional: print debug
+                    break 
+
+            content = bytes_for_final_decode.decode('utf-8', errors='replace')
+            # print(f"INFO: Successfully decoded with 'utf-8' (replacing errors).") # Optional: print info
+        except Exception as e:
+            print(f"ERROR: Failed to decode file '{file_path}' even with 'utf-8' and 'errors=replace': {e}")
+            return None
+
+    # Step 6: Normalize line endings if requested.
+    if content is not None and normalize_line_endings:
+        content = content.replace('\r\n', '\n').replace('\r', '\n')
+        # print("DEBUG: Line endings normalized to Unix style.") # Optional: print debug
+
+    return content
+
+
+
