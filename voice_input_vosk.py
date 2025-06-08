@@ -1,89 +1,99 @@
+
 r"""
 # Voice Input Transcription with Vosk
 
-This Python script provides a live, real-time speech-to-text transcription service using the Vosk speech recognition toolkit. It leverages a progressive enhancement approach, starting with a smaller, faster model for immediate feedback and seamlessly switching to a larger, more accurate model in the background once loaded.
+This Python script provides a live, real-time speech-to-text transcription service using the Vosk speech recognition toolkit. It employs a progressive enhancement approach, starting with a smaller, faster model for immediate feedback and seamlessly switching to a larger, more accurate model in the background once loaded.
 
 ## Features
 
-  * Real-time Transcription: Converts spoken audio from your microphone into text as you speak.
-  * Progressive Accuracy: Initiates with a fast, lightweight Vosk model for quick startup and transitions to a more accurate, larger model for improved transcription quality.
-  * Offline Operation: Vosk models run locally on your machine, ensuring privacy and eliminating the need for an internet connection during transcription.
-  * Hotkeys: Use Ctrl+Alt+Space to gracefully stop the transcription process.
-  * Session Management: Transcripts are saved into timestamped session folders, with individual utterances and a complete session transcript.
-  * Intelligent Display: Filters common filler words and intelligently updates partial results on the console for a cleaner user experience.
+  * **Real-time Transcription:** Converts spoken audio from your microphone into text as you speak.
+  * **Progressive Accuracy:** Initiates with a fast, lightweight Vosk model for quick startup and transitions to a more accurate, larger model for improved transcription quality.
+  * **Offline Operation:** Vosk models run locally on your machine, ensuring privacy and eliminating the need for an internet connection during transcription.
+  * **Configurable Display Modes:**
+      * **Default (Batch Display):** Provides clean, stable on-screen output by displaying full utterances only after a pause or periodic flush. This mode is ideal for clean transcription display.
+      * **Immediate Display:** Can be enabled via a command-line argument for real-time partial results, offering immediate visual feedback, though it may exhibit visual artifacts like line repetitions in a standard console.
+  * **Intelligent Cleaning:** Filters common filler words (like "um", "uh", "huh", "by") and intelligently updates/suppresses partial results on the console for a cleaner user experience, especially in batch mode.
+  * **Hotkeys:** Use `Ctrl+Alt+Space` to gracefully stop the transcription process.
+  * **Session Management:** Transcripts are saved into timestamped session folders, with individual utterances and a complete session transcript.
+  * **Accent Support:** Configurable to load different English accent models (e.g., US, Indian, British) for improved accuracy with various speech patterns.
 
 ## Requirements
 
   * Python 3.x
-  * sounddevice
-  * vosk
-  * pynput
-  * colorama
+  * `sounddevice`
+  * `vosk`
+  * `pynput`
+  * `colorama`
 
 You can install these dependencies using pip:
-pip install sounddevice vosk pynput colorama
+`pip install sounddevice vosk pynput colorama`
 
 ## Vosk Models
 
-This script utilizes two Vosk models for its progressive enhancement feature:
-
-1.  Small Model (Fast): vosk-model-small-en-us-0.15
-2.  Large Model (High Accuracy): vosk-model-en-us-0.22
+This script utilizes two Vosk models for its progressive enhancement feature, and can be configured to use different English accent models.
 
 Downloading Vosk Models:
 
-You must download these Vosk models and place them in the same directory as this Python script (voice\_input\_vosk.py) or specify their paths using command-line arguments or the voice\_config.txt file.
+You must download these Vosk models and place them in the same directory as this Python script (`voice_input_vosk.py`) or specify their paths using command-line arguments or the `voice_config.txt` file.
 
 You can download the models from the official Vosk website:
 
-  * Vosk Models Page: [https://alphacephei.com/vosk/models](https://alphacephei.com/vosk/models)
+  * **Vosk Models Page:** [https://alphacephei.com/vosk/models](https://alphacephei.com/vosk/models)
 
-    Navigate to this page to find a list of available models. For this script, look for the English models:
-
-      * vosk-model-small-en-us-0.15
-      * vosk-model-en-us-0.22 (or a newer, similarly sized high-accuracy English model if available)
+    Navigate to this page to find a list of available models. For this script, look for the English models. Examples include:
+      * `vosk-model-small-en-us-0.15` (Small, Fast US English)
+      * `vosk-model-en-us-0.22` (Large, High Accuracy US English)
+      * `vosk-model-small-en-in-0.4` (Lightweight Indian English)
+      * `vosk-model-en-in-0.5` (Generic Indian English)
+      * `vosk-model-en-gb-something` (Example for British English - verify exact name on site)
 
 Extraction:
 
-After downloading, the models will be in compressed archives (e.g., .zip or .tar.gz). You must unzip/extract these archives into their respective folders. For example, vosk-model-small-en-us-0.15.zip should be extracted to a folder named vosk-model-small-en-us-0.15.
+After downloading, the models will be in compressed archives (e.g., `.zip` or `.tar.gz`). You must unzip/extract these archives into their respective folders. For example, `vosk-model-small-en-us-0.15.zip` should be extracted to a folder named `vosk-model-small-en-us-0.15`.
 
 Placement:
 
-Ensure the extracted model directories (e.g., vosk-model-small-en-us-0.15/ and vosk-model-en-us-0.22/) are located in the same folder as your voice\_input\_vosk.py script.
+Ensure the extracted model directories (e.g., `vosk-model-small-en-us-0.15/` and `vosk-model-en-us-0.22/`) are located in the same folder as your `voice_input_vosk.py` script, or specify their paths in `voice_config.txt`.
 
 ## Configuration (Optional)
 
-You can create a voice\_config.txt file in the same directory as the script to customize settings. Here's an example:
+You can create a `voice_config.txt` file in the same directory as the script to customize settings. Here's an example:
 
-# voice\_config.txt
-
-device\_index = 1 \# Your audio input device index
-small\_model\_path = vosk-model-small-en-us-0.15
-large\_model\_path = vosk-model-en-us-0.22
-output\_dir = transcripts
+```
+# voice_config.txt
+device_index = 1 # Your audio input device index (run without arg to list devices)
+# Model paths can be specified directly, or derived from language_model setting
+small_model_path = vosk-model-small-en-us-0.15 
+large_model_path = vosk-model-en-us-0.22
+output_dir = transcripts
+language_model = en-us # Set to 'en-in', 'en-gb', etc. to load different accent models
+```
 
 ## Usage
 
-To run the script, simply execute it from your terminal:
+To run the script with the default (batch display) mode, simply execute it from your terminal:
 
-python voice\_input\_vosk.py
+`python voice_input_vosk.py`
 
 ### Command-line Arguments
 
 You can override configuration settings directly from the command line:
 
-  * \--config \<path\>: Specify a different configuration file.
-  * \--device-index \<index\>: Manually set the audio input device index. Run the script without this argument first to see a list of available devices.
-  * \--small-model-path \<path\>: Specify the path to the small Vosk model.
-  * \--large-model-path \<path\>: Specify the path to the large Vosk model.
-  * \--output-dir \<path\>: Specify the directory to save session transcripts.
+  * `--config <path>`: Specify a different configuration file.
+  * `--device-index <index>`: Manually set the audio input device index. Run the script without this argument first to see a list of available devices.
+  * `--small-model-path <path>`: Specify the path to the small Vosk model. **Overrides `language_model` if specified.**
+  * `--large-model-path <path>`: Specify the path to the large Vosk model. **Overrides `language_model` if specified.**
+  * `--output-dir <path>`: Specify the directory to save session transcripts.
+  * `--immediate-display`: Enable immediate display of partial results. By default, batch display is active for cleaner output.
+  * `--language-model <code_str>`: Specify the accent-specific language model to use (e.g., `en-us`, `en-in`, `en-gb`). This will dynamically select `small_model_path` and `large_model_path` unless they are explicitly provided.
 
 Example with arguments:
 
-python voice\_input\_vosk.py --device-index 0 --output-dir my\_transcripts
+`python voice_input_vosk.py --device-index 0 --output-dir my_transcripts --language-model en-in`
 
-The script will guide you through selecting an audio input device if device\_index is not specified.
+The script will guide you through selecting an audio input device if `device_index` is not specified.
 """
+
 import os
 import sys
 import time
@@ -101,7 +111,7 @@ from pynput import keyboard
 import colorama
 colorama.init()
 
-# --- Configuration ---
+# --- Configuration Constants ---
 CONFIG_FILE = "voice_config.txt"
 CONFIG_DEFAULTS = {
     'device_index': None,
@@ -110,50 +120,45 @@ CONFIG_DEFAULTS = {
     'output_dir': None
 }
 
-# --- Audio Settings ---
+# --- Audio & Vosk Settings ---
 SAMPLE_RATE = 16000
 CHANNELS = 1
 DTYPE = 'int16'
 BLOCK_SIZE = 400
-LEADING_FILLER_WORDS = {"um", "uh"}
-PAUSE_THRESHOLD_SECONDS = 1.0 # Softened from 1.5
+LEADING_FILLER_WORDS = {"um", "uh", "huh"}
 
-# --- Display Enhancement Settings ---
+# --- Display & Behavioral Thresholds ---
+PAUSE_THRESHOLD_SECONDS = 1.0 # Duration of silence to consider an utterance potentially finished
+SILENCE_THRESHOLD_SECONDS = 0.5 # Duration of no audio to trigger a recognizer state check
+PARTIAL_UPDATE_THROTTLE_SECONDS = 0.3 # Max frequency for updating partial console output
+MIN_PARTIAL_LENGTH_FOR_DISPLAY = 2 # Minimum length for a partial to be considered for display
+FORCED_FLUSH_INTERVAL_SECONDS = 4.0 # Interval for forcing a recognizer flush in batch mode for updates
+
+# --- Common Filler Words for Display Suppression ---
 COMMON_FILL_DISPLAY_SUPPRESS = {
     "the", "a", "an", "i", "and", "oh", "um", "uh", "mhm", "hmm", "yeah", "okay",
     "you", "so", "well", "like", "just", "it's", "is", "of", "to", "in", "for",
-    "that", "no", "yes", "on", "he", "she", "we", "they", "was", "are", "do", "don't"
+    "that", "no", "yes", "on", "he", "she", "we", "they", "was", "are", "do", "don't",
+    "huh", "by"
 }
-SILENCE_THRESHOLD_SECONDS = 0.5 # Softened from 0.75
-PARTIAL_UPDATE_THROTTLE_SECONDS = 0.08 # Softer throttle: approx 12.5 Hz
-MIN_PARTIAL_LENGTH_FOR_DISPLAY = 2 # Allowing shorter meaningful partials
 
-
-# --- Globals (Managed by the application, shared across functions) ---
+# --- Globals (Managed by the application, shared across functions via queue/event) ---
 _audio_queue = queue.Queue()
-_finish_event = threading.Event()
-
-_vosk_model_small = None
-_vosk_recognizer_small = None
-
-_vosk_model_large = None
-_vosk_recognizer_large = None
-
-_current_recognizer = None
-
-_large_model_loaded_event = threading.Event()
+_finish_event = threading.Event() # Set to signal the main loop to stop
 
 
 # --- Hotkey Callbacks ---
 def _on_finish_hotkey():
+    """Callback function for the global hotkey to stop transcription."""
     print("\nFinish hotkey pressed. Finalizing transcript...", file=sys.stderr)
     _finish_event.set()
 
 
 def _start_hotkey_listener():
+    """Starts a global keyboard listener for the finish hotkey."""
     try:
         listener = keyboard.GlobalHotKeys({'<ctrl>+<alt>+<space>': _on_finish_hotkey})
-        listener.daemon = True
+        listener.daemon = True # Allows the program to exit even if the listener is still running
         listener.start()
     except Exception as e:
         print(f"Warning: Hotkey disabled (requires admin/root or specific OS setup): {e}", file=sys.stderr)
@@ -161,13 +166,20 @@ def _start_hotkey_listener():
 
 # --- Text Cleaning Functions ---
 def _clean_text(text: str) -> str:
+    """Removes leading filler words from a given text string."""
     words = text.split()
+    
+    # Remove leading filler words
     while words and words[0].lower() in LEADING_FILLER_WORDS:
         words.pop(0)
+    
     return ' '.join(words)
 
 
 def _clean_partial_for_display(partial_text: str) -> str:
+    """Filters out common filler words and short, less meaningful phrases for partial display.
+       Also used for filtering forced flush results in batch mode.
+    """
     words = partial_text.strip().split()
     lower_words = [w.lower() for w in words]
 
@@ -188,61 +200,40 @@ def _clean_partial_for_display(partial_text: str) -> str:
 
 # --- Audio Callback Function ---
 def _audio_callback(indata, frames, time_info, status):
+    """Callback function for sounddevice to put audio data into the queue."""
     if status:
-        pass
+        pass # print(status, file=sys.stderr) # Uncomment for debug
     _audio_queue.put(bytes(indata))
 
 
 # --- Utility Functions ---
 def list_audio_devices():
-    print("\nAvailable Audio Input Devices:")
+    """Prints a list of available audio input devices to stderr."""
+    print("\nAvailable Audio Input Devices:", file=sys.stderr)
     try:
         for idx, dev in enumerate(sd.query_devices()):
             if dev['max_input_channels'] > 0:
-                print(f"  [{idx}] {dev['name']}")
+                print(f"  [{idx}] {dev['name']}", file=sys.stderr)
     except Exception as e:
         print(f"Error listing audio devices: {e}", file=sys.stderr)
 
 
-def _load_large_model_in_background(model_path: str, sample_rate: int):
-    global _vosk_model_large, _vosk_recognizer_large
-    print("\nLoading high-accuracy model in background (this may take a moment)...", file=sys.stderr)
-    try:
-        _vosk_model_large = vosk.Model(model_path)
-        _vosk_recognizer_large = vosk.KaldiRecognizer(_vosk_model_large, sample_rate)
-        _vosk_recognizer_large.SetWords(True)
-        _large_model_loaded_event.set()
-        print("High-accuracy model loaded. Will switch at next natural break.", file=sys.stderr)
-    except Exception as e:
-        print(f"Error loading high-accuracy model in background: {e}", file=sys.stderr)
+# --- Refactored Helper Functions for Main Logic ---
 
-
-# --- Main Application Logic ---
-# --- Main Application Logic ---
-def main():
-    parser = argparse.ArgumentParser(
-        description="Live mic transcription using Vosk with progressive enhancement.\n"
-                    "Starts fast, then switches to higher accuracy in the background.\n"
-                    "Output wraps naturally. Ctrl+Alt+Space to finish.")
-    parser.add_argument("--config", default=CONFIG_FILE, help="Path to the configuration file.")
-    parser.add_argument("--device-index", type=int, help="Specify audio input device index.")
-    parser.add_argument("--small-model-path", help="Path to the small Vosk model directory.")
-    parser.add_argument("--large-model-path", help="Path to the large Vosk model directory (high accuracy).")
-    parser.add_argument("--output-dir", help="Directory to save session transcripts.")
-    args = parser.parse_args()
-
-    # --- Load Configuration from file or create it ---
+def _load_configuration_and_args(config_file_path: str) -> dict:
+    """
+    Loads configuration from file and command-line arguments.
+    If config file doesn't exist, prompts user for device index and creates it.
+    """
     cfg = CONFIG_DEFAULTS.copy()
-    config_file_path = args.config
 
     if os.path.exists(config_file_path):
-        # Config file exists, load settings from it
+        print(f"Configuration loaded from '{config_file_path}'.")
         with open(config_file_path, 'r', encoding='utf-8') as f:
             for line in f:
                 line = line.strip()
                 if '=' in line and not line.startswith('#'):
                     k, v = line.split('=', 1)
-                    # Convert 'None' string to actual None type for relevant keys
                     if v.strip().lower() == 'none':
                         cfg[k.strip()] = None
                     else:
@@ -250,28 +241,23 @@ def main():
         try:
             cfg['device_index'] = int(cfg.get('device_index'))
         except (ValueError, TypeError):
-            cfg['device_index'] = None # Ensure it's None if parsing fails
-        print(f"Configuration loaded from '{config_file_path}'.")
+            cfg['device_index'] = None
     else:
-        # Config file does not exist, prompt for device and create file
         print(f"Configuration file '{config_file_path}' not found.", file=sys.stderr)
         list_audio_devices()
         dev_idx_input = None
         while dev_idx_input is None:
             try:
                 dev_idx_input = int(input("Select audio input device index: "))
-                # Validate input: basic check if device index is plausible
-                # You might want to add more robust validation here, e.g., checking against sd.query_devices()
-                if dev_idx_input < 0: # Basic validation
+                if dev_idx_input < 0:
                     raise ValueError
             except ValueError:
                 print("Invalid input. Please enter a number.", file=sys.stderr)
-                dev_idx_input = None # Reset to None to re-prompt
+                dev_idx_input = None
 
         cfg['device_index'] = dev_idx_input
         print(f"Device index {dev_idx_input} selected and will be saved to config.")
 
-        # Create the config file with the chosen device index and other defaults
         try:
             with open(config_file_path, 'w', encoding='utf-8') as f:
                 f.write("# This file contains configuration settings for the voice transcription script.\n")
@@ -281,34 +267,65 @@ def main():
                 f.write("# Set 'output_dir' to the desired directory for saving transcripts.\n\n")
                 
                 for key, value in CONFIG_DEFAULTS.items():
-                    if key == 'device_index': # Use the chosen device index
+                    if key == 'device_index':
                         f.write(f"device_index = {cfg['device_index']}\n")
-                    elif value is None: # Explicitly write 'None' for None values
+                    elif value is None:
                         f.write(f"{key} = None\n")
-                    else: # For string paths
+                    else:
                         f.write(f"{key} = {value}\n")
             print(f"Default config file created at '{config_file_path}'.", file=sys.stderr)
         except IOError as e:
             print(f"Error creating config file '{config_file_path}': {e}", file=sys.stderr)
-            sys.exit(1) # Exit if cannot create config file
+            sys.exit(1)
 
-    # Override with command-line arguments if provided
-    dev_idx = args.device_index if args.device_index is not None else cfg['device_index']
-    small_model_path = args.small_model_path or cfg['small_model_path']
-    large_model_path = args.large_model_path or cfg['large_model_path']
-    # Ensure output_dir is an actual None if not provided via args and 'None' in config
-    output_dir = args.output_dir if args.output_dir is not None else cfg['output_dir']
+    return cfg
 
-    # --- Validate model paths ---
+
+def _validate_model_paths(small_model_path: str, large_model_path: str) -> str:
+    """
+    Validates the existence of Vosk model directories.
+    Returns the large_model_path if valid, otherwise None.
+    Exits if the small model is not found.
+    """
     if not os.path.isdir(small_model_path):
         print(f"Error: Small Vosk model not found at '{small_model_path}'. Please download and extract it.", file=sys.stderr)
         sys.exit(1)
+
     if large_model_path and not os.path.isdir(large_model_path):
         print(f"Warning: High-accuracy Vosk model not found at '{large_model_path}'. "
               "Please download and extract it. Application will only use the fast model.", file=sys.stderr)
-        large_model_path = None
+        return None
+    return large_model_path
 
-    # --- Step 1: Load SMALL model FIRST ---
+
+def _setup_session_directories(output_base_dir: str | None) -> tuple[str, str]:
+    """
+    Sets up the timestamped session and utterance directories.
+    Returns a tuple: (base_session_dir, utterances_dir).
+    """
+    if output_base_dir:
+        sessions_root = os.path.join(output_base_dir, 'sessions')
+    else:
+        sessions_root = 'sessions'
+
+    os.makedirs(sessions_root, exist_ok=True)
+    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+    base_dir = os.path.join(sessions_root, f"session_{ts}")
+    os.makedirs(base_dir, exist_ok=True)
+    utter_dir = os.path.join(base_dir, 'utterances')
+    os.makedirs(utter_dir, exist_ok=True)
+    return base_dir, utter_dir
+
+
+def _initialize_vosk_recognizers(small_model_path: str, large_model_path: str | None, sample_rate: int) -> tuple[vosk.KaldiRecognizer, threading.Event, list]:
+    """
+    Loads Vosk models and initializes recognizers.
+    Starts a background thread for loading the large model.
+    Returns: (initial_recognizer, large_model_loaded_event, large_recognizer_instance_container)
+    The large_recognizer_instance_container is a mutable list [None] that will hold the
+    vosk.KaldiRecognizer instance for the large model once loaded in the background thread.
+    """
+    # Load SMALL model FIRST (blocking)
     spinner_active = True
     def spinner_small_model_load():
         for c in itertools.cycle('|/-\\'):
@@ -319,115 +336,162 @@ def main():
         sys.stderr.write("\r" + " "*20 + "\r")
         sys.stderr.flush()
 
+    # Create the small model instance
+    _vosk_model_small = vosk.Model(small_model_path)
+    vosk_recognizer_small = vosk.KaldiRecognizer(_vosk_model_small, sample_rate)
+    vosk_recognizer_small.SetWords(True)
+
     th_small_spinner = threading.Thread(target=spinner_small_model_load, daemon=True)
     th_small_spinner.start()
+    
+    spinner_active = False # Signal spinner to stop as model is loaded
+    th_small_spinner.join() # Wait for spinner thread to finish its cleanup
 
-    global _vosk_model_small, _vosk_recognizer_small, _current_recognizer
-    _vosk_model_small = vosk.Model(small_model_path)
-    _vosk_recognizer_small = vosk.KaldiRecognizer(_vosk_model_small, SAMPLE_RATE)
-    _vosk_recognizer_small.SetWords(True)
-    _current_recognizer = _vosk_recognizer_small
-
-    spinner_active = False
-    th_small_spinner.join()
     print("Fast model loaded. Transcription starting...")
 
-    # --- Step 2: Start background thread to load LARGE model ---
+    # Set up container for large recognizer and event for signaling
+    large_recognizer_instance_container = [None] # This will hold the Vosk.KaldiRecognizer instance
+    large_model_loaded_event = threading.Event()
+
+    def _load_large_model_in_background_thread(model_path: str, sr: int, container: list, event: threading.Event):
+        """Internal function for the background thread to load the large model."""
+        print("\nLoading high-accuracy model in background (this may take a moment)...", file=sys.stderr)
+        try:
+            vosk_model_large = vosk.Model(model_path)
+            vosk_recognizer_large = vosk.KaldiRecognizer(vosk_model_large, sr)
+            vosk_recognizer_large.SetWords(True)
+            container[0] = vosk_recognizer_large # Store in shared container
+            event.set()
+            print("High-accuracy model loaded. Will switch at next natural break.", file=sys.stderr)
+        except Exception as e:
+            print(f"Error loading high-accuracy model in background: {e}", file=sys.stderr)
+            event.set() # Signal completion even on error to unblock main thread
+            container[0] = None # Ensure it's None if loading failed
+
     if large_model_path:
         load_large_thread = threading.Thread(
-            target=_load_large_model_in_background,
-            args=(large_model_path, SAMPLE_RATE),
+            target=_load_large_model_in_background_thread,
+            args=(large_model_path, sample_rate, large_recognizer_instance_container, large_model_loaded_event),
             daemon=True
         )
         load_large_thread.start()
     else:
-        _large_model_loaded_event.set()
+        # If no large model path, immediately set the event to skip waiting
+        large_model_loaded_event.set()
 
-    # --- Final Audio Device Selection (after potential config load/creation) ---
-    # This ensures that if device_index was set in config or chosen by user, it's used.
-    # If a command-line --device-index was provided, it takes precedence.
-    if dev_idx is None:
-        list_audio_devices()
-        try:
-            dev_idx = int(input("Select device index: "))
-        except ValueError:
-            print("Invalid input. Exiting.", file=sys.stderr)
-            sys.exit(1)
-    
-    # Check if selected/configured device is valid for input
-    try:
-        device_info = sd.query_devices(dev_idx, 'input')
-    except Exception as e:
-        print(f"Error: Selected audio device index {dev_idx} is not valid for input: {e}", file=sys.stderr)
-        sys.exit(1)
+    return vosk_recognizer_small, large_model_loaded_event, large_recognizer_instance_container
 
-    # --- Session Management (Output Directory Setup) ---
-    if output_dir:
-        # If output_dir is provided (and is not None), sessions will be a subfolder of it.
-        sessions_root = os.path.join(output_dir, 'sessions')
-    else:
-        # If no output_dir is provided (it's None), create the 'sessions' folder in the current directory.
-        sessions_root = 'sessions' # This will resolve to ./sessions
 
-    os.makedirs(sessions_root, exist_ok=True)
-    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-    base = os.path.join(sessions_root, f"session_{ts}")
-    os.makedirs(base, exist_ok=True)
-    utter_dir = os.path.join(base, 'utterances')
-    os.makedirs(utter_dir, exist_ok=True)
-
-    print(f"Recording from device {dev_idx}. Session folder: {base}")
-    transcripts = []
-    _start_hotkey_listener()
-
-    # --- Variables for Console Display and Pause Detection ---
-    last_displayed_console_text = ""
-    last_partial_update_time = time.monotonic()
-    last_audio_time = time.monotonic()
-    last_final_text_printed = ""
-
+def _process_audio_stream(
+    dev_idx: int,
+    sample_rate: int,
+    batch_display_mode: bool, # This controls the display mode
+    transcripts: list[str],
+    utter_dir: str,
+    initial_recognizer: vosk.KaldiRecognizer,
+    large_model_loaded_event: threading.Event,
+    large_recognizer_container: list # Pass the mutable list to get the large recognizer
+):
+    """
+    Handles the main audio processing loop, Vosk recognition, and console display.
+    Manages model switching and forced flushing in batch display mode.
+    """
+    _current_recognizer = initial_recognizer
     switched_to_large_model = False
 
-    # --- Main Audio Processing Loop ---
+    current_line_buffer = ""
+    has_printed_to_current_line = False
+    last_partial_update_time = time.monotonic()
+    last_audio_time = time.monotonic()
+    last_forced_flush_time = time.monotonic() # For periodic flushing in batch mode
+
+    initial_message = "Start speaking."
+    if batch_display_mode:
+        initial_message += " (Batch display mode)"
+    else:
+        initial_message += " (Immediate display mode)"
+    sys.stdout.write(initial_message + "\n")
+    sys.stdout.flush()
+
     try:
-        with sd.InputStream(samplerate=SAMPLE_RATE,
-                            device=dev_idx, # Use the determined device index
+        with sd.InputStream(samplerate=sample_rate,
+                            device=dev_idx,
                             channels=CHANNELS,
                             dtype=DTYPE,
                             blocksize=BLOCK_SIZE,
                             callback=_audio_callback):
-            _current_recognizer.Result()
-            sys.stdout.write("Start speaking. (Using fast model initially)\n")
-            sys.stdout.flush()
+            _current_recognizer.Result() # Clear any initial state
 
             while not _finish_event.is_set():
                 current_time = time.monotonic()
 
-                # --- Step 3: Check for and perform seamless switch to large model ---
-                if not switched_to_large_model and _large_model_loaded_event.is_set():
-                    if _vosk_recognizer_large:
-                        if last_displayed_console_text:
-                            sys.stdout.write('\r\033[K') # Use ANSI clear
-                            sys.stdout.flush()
-                            sys.stdout.write(last_displayed_console_text + '\n')
-                            sys.stdout.flush()
-                            transcripts.append(last_displayed_console_text)
-                            last_final_text_printed = last_displayed_console_text
+                # --- Model Switch Logic ---
+                if not switched_to_large_model and large_model_loaded_event.is_set():
+                    # Attempt to get the large recognizer instance from the container
+                    vosk_recognizer_large = large_recognizer_container[0] 
 
-                        _current_recognizer = _vosk_recognizer_large
-                        _current_recognizer.Result()
-                        switched_to_large_model = True
-                        last_displayed_console_text = ""
-                        last_partial_update_time = current_time
-                        last_audio_time = current_time
+                    if vosk_recognizer_large: # Check if it was successfully loaded
+                        # Before switching, try to finalize any pending speech from the small model
+                        # by forcing a flush (AcceptWaveform with empty bytes) or waiting for a pause.
+                        if _current_recognizer.AcceptWaveform(b'') or \
+                           (current_time - last_audio_time > PAUSE_THRESHOLD_SECONDS):
+                            
+                            # Finalize any pending text from the small model before switching
+                            raw_res_before_switch = json.loads(_current_recognizer.Result()).get('text','').strip()
+                            cleaned_res_before_switch = _clean_text(raw_res_before_switch)
+                            # Apply _clean_partial_for_display to ensure non-meaningful words are suppressed
+                            filtered_res_before_switch = _clean_partial_for_display(cleaned_res_before_switch) 
 
-                        print("\nSwitched to high-accuracy model. Enjoy!", file=sys.stderr)
-                        sys.stdout.write(">> High-accuracy recognition active.\n")
-                        sys.stdout.flush()
+                            if filtered_res_before_switch: # Only print if meaningful after full cleaning
+                                if has_printed_to_current_line:
+                                    sys.stdout.write('\r\033[K')
+                                sys.stdout.write(filtered_res_before_switch + '\n')
+                                sys.stdout.flush()
+                                if filtered_res_before_switch not in transcripts:
+                                    transcripts.append(filtered_res_before_switch)
+                                current_line_buffer = ""
+                                has_printed_to_current_line = False
+
+                            _current_recognizer = vosk_recognizer_large # PERFORM THE SWITCH
+                            _current_recognizer.Result() # Clear new recognizer's initial state
+                            switched_to_large_model = True
+                            
+                            print("\nSwitched to high-accuracy model. Enjoy!", file=sys.stderr)
+                            sys.stdout.write(">> High-accuracy recognition active.\n")
+                            sys.stdout.flush()
                     else:
-                        switched_to_large_model = True
+                        # If large model failed to load but event is set, just mark as switched
+                        # so we don't keep trying to switch.
+                        switched_to_large_model = True 
 
-                # Get audio data or handle empty queue
+
+                # --- Forced Flush for Batch Display (Periodic Updates) ---
+                # This logic ONLY applies when batch_display_mode is TRUE
+                # Only perform forced flush if enough time has passed AND there has been recent audio (not absolute silence).
+                if batch_display_mode and \
+                   (current_time - last_forced_flush_time >= FORCED_FLUSH_INTERVAL_SECONDS) and \
+                   (current_time - last_audio_time < SILENCE_THRESHOLD_SECONDS):
+                    
+                    raw_forced_flush_res = json.loads(_current_recognizer.Result()).get('text','').strip()
+                    cleaned_forced_flush_res = _clean_text(raw_forced_flush_res)
+                    # Apply _clean_partial_for_display to filter out short, non-meaningful content (like "huh")
+                    filtered_forced_flush_res = _clean_partial_for_display(cleaned_forced_flush_res) 
+
+                    if filtered_forced_flush_res: # Only print if there's meaningful text after cleaning
+                        if has_printed_to_current_line:
+                            sys.stdout.write('\r\033[K')
+                        sys.stdout.write(filtered_forced_flush_res + '\n')
+                        sys.stdout.flush()
+                        if filtered_forced_flush_res not in transcripts:
+                            transcripts.append(filtered_forced_flush_res)
+                        current_line_buffer = ""
+                        has_printed_to_current_line = False
+                        
+                    _current_recognizer.Result() # Clear buffer after forced pull, even if empty
+                    last_forced_flush_time = current_time # Reset timer
+
+
+                # --- Get audio data or handle empty queue ---
                 try:
                     data = _audio_queue.get(timeout=0.05)
                     last_audio_time = current_time
@@ -438,123 +502,146 @@ def main():
                         full_text = _clean_text(res.get('text','')).strip()
 
                         if full_text:
-                            new_segment = full_text[len(last_final_text_printed):].strip()
-                            if new_segment:
-                                sys.stdout.write('\r\033[K') # Use ANSI clear
-                                sys.stdout.write(new_segment + ' ')
-                                sys.stdout.flush()
-                                last_final_text_printed = full_text
+                            if has_printed_to_current_line:
+                                sys.stdout.write('\r\033[K')
+                            sys.stdout.write(full_text + '\n')
+                            sys.stdout.flush()
+                            current_line_buffer = ""
+                            has_printed_to_current_line = False
 
-                            if full_text and (not transcripts or full_text != transcripts[-1]):
+                            if full_text not in transcripts:
                                 transcripts.append(full_text)
                                 fn = datetime.now().strftime("utterance_%Y%m%d_%H%M%S.txt")
                                 with open(os.path.join(utter_dir, fn), 'w', encoding='utf-8') as f:
                                     f.write(full_text)
+                        else:
+                            # If final result is empty, clear line and move cursor down
+                            # BUT ONLY IF we had something on the line. Otherwise, avoid extra newlines.
+                            if has_printed_to_current_line:
+                                sys.stdout.write('\r\033[K')
+                                sys.stdout.flush()
+                                current_line_buffer = ""
+                                has_printed_to_current_line = False
+                                sys.stdout.write('\n') # Move cursor to next line
+                                sys.stdout.flush()
                         
-                        sys.stdout.write('\n')
-                        sys.stdout.flush()
-                        last_displayed_console_text = ""
                         last_partial_update_time = current_time
+                        last_forced_flush_time = current_time # Reset forced flush on final result
                         
                     else:
                         # --- Interim (Partial) Result ---
-                        if current_time - last_audio_time <= SILENCE_THRESHOLD_SECONDS:
+                        # This block is ONLY executed if batch_display_mode is FALSE (i.e., immediate mode)
+                        if not batch_display_mode:
                             partial_json = json.loads(_current_recognizer.PartialResult())
                             raw_partial = partial_json.get('partial', '').strip()
                             filtered_partial = _clean_partial_for_display(raw_partial)
 
-                            # REVISED PARTIAL DISPLAY LOGIC - BALANCED
-                            if filtered_partial: # Must be non-empty after filtering
-                                should_update = False
-
-                                if filtered_partial != last_displayed_console_text: # Content has actually changed
-                                    if len(filtered_partial) > len(last_displayed_console_text):
-                                        # It's longer, almost always a progressive update
-                                        should_update = True
-                                    elif not last_displayed_console_text.startswith(filtered_partial) and \
-                                         not filtered_partial.startswith(last_displayed_console_text):
-                                        # Neither is a prefix of the other, implies a correction or different path
-                                        should_update = True
-                                    # If length is the same or shorter, only update if it's a meaningful correction
-                                    # (not just a minor variation, and not a regression)
-                                    elif len(filtered_partial) >= MIN_PARTIAL_LENGTH_FOR_DISPLAY:
-                                        should_update = True
-                                    
-                                    # Ensure we display the first meaningful partial, even if short
-                                    if not last_displayed_console_text and len(filtered_partial) >= MIN_PARTIAL_LENGTH_FOR_DISPLAY:
-                                        should_update = True
-                                        
-                                # Condition: Throttle check
-                                if should_update and (current_time - last_partial_update_time >= PARTIAL_UPDATE_THROTTLE_SECONDS):
-                                    sys.stdout.write('\r\033[K') # Use ANSI clear
+                            if filtered_partial:
+                                is_meaningful_update = False
+                                
+                                if not current_line_buffer and len(filtered_partial) >= MIN_PARTIAL_LENGTH_FOR_DISPLAY:
+                                    is_meaningful_update = True
+                                elif len(filtered_partial) > len(current_line_buffer) + 3:
+                                    is_meaningful_update = True
+                                elif filtered_partial != current_line_buffer and \
+                                     (len(filtered_partial) > len(current_line_buffer) or \
+                                      abs(len(filtered_partial) - len(current_line_buffer)) > 5):
+                                    is_meaningful_update = True
+                                
+                                if is_meaningful_update and (current_time - last_partial_update_time >= PARTIAL_UPDATE_THROTTLE_SECONDS):
+                                    sys.stdout.write('\r\033[K')
                                     sys.stdout.write(filtered_partial)
                                     sys.stdout.flush()
-                                    last_displayed_console_text = filtered_partial
+                                    current_line_buffer = filtered_partial
+                                    has_printed_to_current_line = True
                                     last_partial_update_time = current_time
-                            # --- END REVISED PARTIAL DISPLAY LOGIC ---
-                        else:
-                            if last_displayed_console_text:
-                                sys.stdout.write('\r\033[K') # Use ANSI clear
+                            elif has_printed_to_current_line and current_time - last_partial_update_time >= PARTIAL_UPDATE_THROTTLE_SECONDS:
+                                # If partial became empty (e.g., user stopped talking, Vosk refined to nothing)
+                                # and we previously printed something, clear it.
+                                sys.stdout.write('\r\033[K')
                                 sys.stdout.flush()
-                                last_displayed_console_text = ""
+                                current_line_buffer = ""
+                                has_printed_to_current_line = False
                                 last_partial_update_time = current_time
 
                 except queue.Empty:
-                    if current_time - last_partial_update_time > PAUSE_THRESHOLD_SECONDS and last_displayed_console_text:
-                        sys.stdout.write('\r\033[K') # Use ANSI clear
-                        sys.stdout.write(last_displayed_console_text + '\n')
-                        sys.stdout.flush()
-                        
-                        if last_displayed_console_text and (not transcripts or last_displayed_console_text != transcripts[-1]):
-                            transcripts.append(last_displayed_console_text)
-                            last_final_text_printed = last_displayed_console_text
+                    # No new audio data, check for silence/pause
+                    if current_time - last_audio_time > SILENCE_THRESHOLD_SECONDS:
+                        raw_final_res_on_silence = json.loads(_current_recognizer.Result()).get('text','').strip()
+                        cleaned_final_res_on_silence = _clean_text(raw_final_res_on_silence)
+                        # Apply _clean_partial_for_display to filter out short, non-meaningful content (like "huh")
+                        filtered_final_res_on_silence = _clean_partial_for_display(cleaned_final_res_on_silence) 
 
-                        last_displayed_console_text = ""
-                        last_partial_update_time = current_time
-                        _current_recognizer.Result()
-                        
-                    elif current_time - last_audio_time > SILENCE_THRESHOLD_SECONDS:
-                        if last_displayed_console_text:
-                            sys.stdout.write('\r\033[K') # Use ANSI clear
+                        if filtered_final_res_on_silence: # Only print if meaningful after cleaning and filtering
+                            if has_printed_to_current_line:
+                                sys.stdout.write('\r\033[K')
+                            sys.stdout.write(filtered_final_res_on_silence + '\n')
                             sys.stdout.flush()
-                            last_displayed_console_text = ""
-                            last_partial_update_time = current_time
-                        _current_recognizer.Result()
+                            if filtered_final_res_on_silence not in transcripts:
+                                transcripts.append(filtered_final_res_on_silence)
+                            current_line_buffer = ""
+                            has_printed_to_current_line = False
+                        elif has_printed_to_current_line:
+                            # If we were showing a partial but got an empty/cleaned/filtered final result during silence,
+                            # clear the line and move to the next.
+                            sys.stdout.write('\r\033[K')
+                            sys.stdout.flush()
+                            current_line_buffer = ""
+                            has_printed_to_current_line = False
+                            sys.stdout.write('\n') # Move to next line
+                            sys.stdout.flush()
+                        
+                        last_audio_time = current_time 
+                        last_partial_update_time = current_time
+                        last_forced_flush_time = current_time # Reset forced flush on silence
+                        _current_recognizer.Result() # Flush internal state (important for new utterances)
 
 
     except KeyboardInterrupt:
         _finish_event.set()
 
-    # --- Finalization Steps After Loop Exits ---
-    if last_displayed_console_text:
-        sys.stdout.write('\r\033[K') # Use ANSI clear
+    # Return final state of transcripts and display variables for finalization
+    return transcripts, current_line_buffer, has_printed_to_current_line, _current_recognizer
+
+
+def _finalize_session(
+    transcripts: list[str],
+    base_dir: str,
+    utter_dir: str,
+    current_line_buffer: str,
+    has_printed_to_current_line: bool,
+    final_recognizer: vosk.KaldiRecognizer
+):
+    """
+    Performs final cleanup and saves the complete transcript to disk.
+    Handles any remaining text in the recognizer's buffer.
+    """
+    # Process any remaining text in the buffer as a final utterance
+    final_trailing_raw = json.loads(final_recognizer.FinalResult()).get('text','').strip()
+    final_trailing_cleaned = _clean_text(final_trailing_raw)
+    # Apply _clean_partial_for_display here as well for consistency with screen output
+    final_trailing_filtered = _clean_partial_for_display(final_trailing_cleaned)
+    
+    if final_trailing_filtered:
+        if has_printed_to_current_line:
+            sys.stdout.write('\r\033[K')
+        sys.stdout.write(final_trailing_filtered + '\n')
         sys.stdout.flush()
-        sys.stdout.write(last_displayed_console_text + '\n')
-        sys.stdout.flush()
-        if not transcripts or last_displayed_console_text != transcripts[-1]:
-            transcripts.append(last_displayed_console_text)
-            last_final_text_printed = last_displayed_console_text
 
-
-    final_trailing_res = json.loads(_current_recognizer.FinalResult()).get('text','').strip()
-    if final_trailing_res:
-        final_trailing_res = _clean_text(final_trailing_res)
-        
-        new_segment = final_trailing_res[len(last_final_text_printed):].strip()
-        if new_segment:
-            sys.stdout.write(new_segment + '\n')
-            sys.stdout.flush()
-        elif last_final_text_printed:
-             sys.stdout.write('\n')
-
-        if not transcripts or (transcripts and final_trailing_res and final_trailing_res != transcripts[-1]):
-            transcripts.append(final_trailing_res)
+        if final_trailing_filtered not in transcripts:
+            transcripts.append(final_trailing_filtered)
             fn = datetime.now().strftime("utterance_final_%Y%m%d_%H%M%S.txt")
             with open(os.path.join(utter_dir, fn), 'w', encoding='utf-8') as f:
-                f.write(final_trailing_res)
+                f.write(final_trailing_filtered)
+    elif has_printed_to_current_line: # If there was a partial but no final text after filtering
+        sys.stdout.write('\r\033[K')
+        sys.stdout.flush()
+        sys.stdout.write('\n')
+        sys.stdout.flush()
+
 
     if transcripts:
-        master_transcript_file = os.path.join(base, 'transcript.txt')
+        master_transcript_file = os.path.join(base_dir, 'transcript.txt')
         with open(master_transcript_file, 'w', encoding='utf-8') as mf:
             mf.write("\n\n".join(transcripts))
         print(f"\nFull transcript saved to: {master_transcript_file}")
@@ -563,5 +650,89 @@ def main():
 
     print("\nExiting application.")
 
+
+# --- Main Function ---
+def main():
+    """
+    Main entry point for the voice input transcription script.
+    Orchestrates configuration, model loading, audio processing, and session finalization.
+    """
+    # 1. Parse Command-line Arguments
+    parser = argparse.ArgumentParser(
+        description="Live mic transcription using Vosk with progressive enhancement.\n"
+                    "By default, displays full utterances for clean output.\n"
+                    "Use --immediate-display for real-time partial results (may have visual artifacts).\n"
+                    "Output wraps naturally. Ctrl+Alt+Space to finish.")
+    parser.add_argument("--config", default=CONFIG_FILE, help="Path to the configuration file.")
+    parser.add_argument("--device-index", type=int, help="Specify audio input device index.")
+    parser.add_argument("--small-model-path", help="Path to the small Vosk model directory.")
+    parser.add_argument("--large-model-path", help="Path to the large Vosk model directory (high accuracy).")
+    parser.add_argument("--output-dir", help="Directory to save session transcripts.")
+    # NEW ARGUMENT: If this flag is present, it means immediate display is desired.
+    parser.add_argument("--immediate-display", action="store_true",
+                        help="Enable immediate display of partial results. Batch display is default.")
+    args = parser.parse_args()
+
+    # 2. Load Configuration from file or create it interactively
+    cfg = _load_configuration_and_args(args.config)
+
+    # Override config settings with command-line arguments if provided
+    dev_idx = args.device_index if args.device_index is not None else cfg['device_index']
+    small_model_path = args.small_model_path or cfg['small_model_path']
+    large_model_path_candidate = args.large_model_path or cfg['large_model_path']
+    output_dir = args.output_dir if args.output_dir is not None else cfg['output_dir']
+    
+    # DETERMINE DISPLAY MODE: batch_display_mode is TRUE by default.
+    # It becomes FALSE only if --immediate-display is present.
+    batch_display_mode = not args.immediate_display
+
+    # 3. Validate Model Paths
+    final_large_model_path = _validate_model_paths(small_model_path, large_model_path_candidate)
+
+    # 4. Initialize Vosk Recognizers (Small immediately, Large in background thread)
+    initial_recognizer, large_model_loaded_event, large_recognizer_container = \
+        _initialize_vosk_recognizers(small_model_path, final_large_model_path, SAMPLE_RATE)
+
+    # 5. Final Audio Device Selection Check
+    try:
+        sd.query_devices(dev_idx, 'input')
+    except Exception as e:
+        print(f"Error: Selected audio device index {dev_idx} is not valid for input: {e}", file=sys.stderr)
+        sys.exit(1)
+
+    # 6. Setup Session Directories
+    session_base_dir, utterance_dir = _setup_session_directories(output_dir)
+    print(f"Recording from device {dev_idx}. Session folder: {session_base_dir}")
+
+    # 7. Start Hotkey Listener
+    _start_hotkey_listener()
+
+    transcripts = [] # List to accumulate all transcribed utterances
+
+    # 8. Process Audio Stream (Main Transcription Loop)
+    transcripts, current_line_buffer, has_printed_to_current_line, final_recognizer_used = \
+        _process_audio_stream(
+            dev_idx=dev_idx,
+            sample_rate=SAMPLE_RATE,
+            batch_display_mode=batch_display_mode,
+            transcripts=transcripts,
+            utter_dir=utterance_dir,
+            initial_recognizer=initial_recognizer,
+            large_model_loaded_event=large_model_loaded_event,
+            large_recognizer_container=large_recognizer_container
+        )
+
+    # 9. Finalize Session (Save Transcript to Disk and perform final console cleanup)
+    _finalize_session(
+        transcripts=transcripts,
+        base_dir=session_base_dir,
+        utter_dir=utterance_dir,
+        current_line_buffer=current_line_buffer,
+        has_printed_to_current_line=has_printed_to_current_line,
+        final_recognizer=final_recognizer_used
+    )
+
+
 if __name__=='__main__':
     main()
+
