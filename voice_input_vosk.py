@@ -1,4 +1,4 @@
-"""
+r"""
 # Voice Input Transcription with Vosk
 
 This Python script provides a live, real-time speech-to-text transcription service using the Vosk speech recognition toolkit. It leverages a progressive enhancement approach, starting with a smaller, faster model for immediate feedback and seamlessly switching to a larger, more accurate model in the background once loaded.
@@ -218,6 +218,7 @@ def _load_large_model_in_background(model_path: str, sample_rate: int):
 
 
 # --- Main Application Logic ---
+# --- Main Application Logic ---
 def main():
     parser = argparse.ArgumentParser(
         description="Live mic transcription using Vosk with progressive enhancement.\n"
@@ -241,7 +242,11 @@ def main():
                 line = line.strip()
                 if '=' in line and not line.startswith('#'):
                     k, v = line.split('=', 1)
-                    cfg[k.strip()] = v.strip()
+                    # Convert 'None' string to actual None type for relevant keys
+                    if v.strip().lower() == 'none':
+                        cfg[k.strip()] = None
+                    else:
+                        cfg[k.strip()] = v.strip()
         try:
             cfg['device_index'] = int(cfg.get('device_index'))
         except (ValueError, TypeError):
@@ -278,7 +283,7 @@ def main():
                 for key, value in CONFIG_DEFAULTS.items():
                     if key == 'device_index': # Use the chosen device index
                         f.write(f"device_index = {cfg['device_index']}\n")
-                    elif value is None: # For other None values
+                    elif value is None: # Explicitly write 'None' for None values
                         f.write(f"{key} = None\n")
                     else: # For string paths
                         f.write(f"{key} = {value}\n")
@@ -291,7 +296,8 @@ def main():
     dev_idx = args.device_index if args.device_index is not None else cfg['device_index']
     small_model_path = args.small_model_path or cfg['small_model_path']
     large_model_path = args.large_model_path or cfg['large_model_path']
-    output_dir = args.output_dir or cfg['output_dir'] # Get output_dir from config or args
+    # Ensure output_dir is an actual None if not provided via args and 'None' in config
+    output_dir = args.output_dir if args.output_dir is not None else cfg['output_dir']
 
     # --- Validate model paths ---
     if not os.path.isdir(small_model_path):
@@ -356,8 +362,13 @@ def main():
         sys.exit(1)
 
     # --- Session Management (Output Directory Setup) ---
-    parent = output_dir or '.' # Use the output_dir from config or args, default to current dir
-    sessions_root = os.path.join(parent, 'sessions')
+    if output_dir:
+        # If output_dir is provided (and is not None), sessions will be a subfolder of it.
+        sessions_root = os.path.join(output_dir, 'sessions')
+    else:
+        # If no output_dir is provided (it's None), create the 'sessions' folder in the current directory.
+        sessions_root = 'sessions' # This will resolve to ./sessions
+
     os.makedirs(sessions_root, exist_ok=True)
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
     base = os.path.join(sessions_root, f"session_{ts}")
@@ -551,7 +562,6 @@ def main():
         print("\nNo transcript recorded during this session.")
 
     print("\nExiting application.")
-
 
 if __name__=='__main__':
     main()
