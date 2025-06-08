@@ -1,0 +1,128 @@
+## Technical Specification: `export_sets.py`
+
+### 1. Overview
+
+The script `export_sets.py` reads data from a Microsoft Excel file (`.xlsx`), extracts specific columns from each row (skipping header rows), and writes the extracted values into text files organized into numbered subfolders.
+
+### 2. Dependencies
+
+* **Python version**: 3.7 or higher
+* **Libraries**:
+
+  * `openpyxl` for reading `.xlsx` files
+  * Python standard library modules: `os`, `argparse`
+
+### 3. File Structure
+
+* **Script file**: `export_sets.py`
+* **Input**: Path to an Excel file with extension `.xlsx`
+* **Output**:
+
+  * A base directory named `sets` (or a user-specified name via command-line argument)
+  * Within the base directory, subdirectories named `set1`, `set2`, ..., one per row of data
+  * In each `setN` directory, four text files:
+
+    * `question.txt`
+    * `answer1.txt`
+    * `answer2.txt`
+    * `answer3.txt`
+
+### 4. Command-line Interface
+
+* **Positional argument**:
+
+  1. `xlsx_path` (string): Path to the input `.xlsx` file
+* **Optional flag**:
+
+  * `--output-dir` or `-o` (string): Base output directory name (default: `sets`)
+
+#### Example Usage
+
+```bash
+python export_sets.py data.xlsx
+python export_sets.py data.xlsx --output-dir=my_sets
+```
+
+### 5. Detailed Functional Requirements
+
+1. **Parse Arguments**
+
+   * Use `argparse.ArgumentParser` to define:
+
+     * `xlsx_path` (required)
+     * `--output-dir` (default: `sets`)
+   * After parsing, store values in `args.xlsx_path` and `args.output_dir`.
+
+2. **Load Workbook**
+
+   * Call `load_workbook` from `openpyxl`:
+
+     * `filename=args.xlsx_path`
+     * `read_only=True` to optimize memory
+     * `data_only=True` to get cell values rather than formulas
+   * Select the active worksheet via `wb.active`.
+
+3. **Prepare Output Directory**
+
+   * Use `os.makedirs(output_dir, exist_ok=True)` to create the base directory if it does not exist.
+
+4. **Iterate Over Rows**
+
+   * Start iterating from Excel row 3 (to skip header rows 1 and 2). Use `ws.iter_rows(min_row=3)`.
+   * Maintain a counter `set_index` initialized to 1.
+
+5. **Row Processing Loop** (for each row):
+   a. **Read Question Cell**:
+
+   * Access column A via `row[0]`.
+   * If the cell value is `None` or an empty string after stripping whitespace, terminate the loop.
+     b. **Read Answer Cells**:
+   * Column H: `row[7]`
+   * Column M: `row[12]`
+   * Column R: `row[17]`
+   * For each, convert `None` to an empty string, otherwise `str(cell.value)`.
+     c. **Create Set Subdirectory**:
+   * Compute `set_name = f"set{set_index}"`.
+   * Compute `set_dir = os.path.join(output_dir, set_name)`.
+   * Create it with `os.makedirs(set_dir, exist_ok=True)`.
+     d. **Write Text Files**:
+   * In `set_dir`, open `question.txt` in write mode with UTF-8 encoding, write the question string.
+   * Similarly create `answer1.txt`, `answer2.txt`, `answer3.txt` with corresponding content.
+     e. **Increment Counter**: `set_index += 1`.
+
+6. **Exit Conditions**
+
+   * The loop ends when a row’s column A (question cell) is empty.
+   * The script then terminates normally.
+
+### 6. Error Handling
+
+* If the input file does not exist or is not a valid `.xlsx`, `openpyxl` will raise an exception, terminating the script with a stack trace.
+* Directory creation uses `exist_ok=True` to ignore errors if directories already exist.
+* Writing files will overwrite existing files with identical names.
+
+### 7. Edge Cases & Assumptions
+
+* **Empty Cells**: Converted to empty strings; no file is omitted.
+* **Blank Rows Mid-sheet**: A blank question cell ends processing, even if subsequent rows have data.
+* **Non-Active Worksheet**: Only the active sheet is processed.
+
+### 8. Naming Conventions
+
+* **Variables**:
+
+  * `xlsx_path`: path to the `.xlsx` file
+  * `output_dir`: base output directory
+  * `wb`, `ws`: workbook and worksheet objects
+  * `set_index`: integer counter for naming subfolders
+  * `row`: a tuple of cell objects
+  * `question`, `answer1`, `answer2`, `answer3`: strings for each cell value
+* **Folders**:
+
+  * Base: `sets` (or user-specified)
+  * Subfolders: `set1`, `set2`, ...
+* **Files**: `question.txt`, `answer1.txt`, `answer2.txt`, `answer3.txt`
+
+---
+
+*This specification provides all necessary details—dependencies, input/output formats, directory layout, looping logic, variable naming, and edge-case handling—so that an LLM or developer can implement the script exactly as intended.*
