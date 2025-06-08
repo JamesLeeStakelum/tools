@@ -94,6 +94,8 @@ Example with arguments:
 The script will guide you through selecting an audio input device if `device_index` is not specified.
 """
 
+
+
 import os
 import sys
 import time
@@ -115,10 +117,25 @@ colorama.init()
 CONFIG_FILE = "voice_config.txt"
 CONFIG_DEFAULTS = {
     'device_index': None,
-    'small_model_path': 'vosk-model-small-en-us-0.15',
-    'large_model_path': 'vosk-model-en-us-0.22',
-    'output_dir': None
+    'device_name': None, # NEW: Store device name for robust selection
+    'small_model_path': 'vosk-model-small-en-us-0.15', # Default to US English
+    'large_model_path': 'vosk-model-en-us-0.22',      # Default to US English
+    'output_dir': 'transcripts', # Default output directory
+    'language_model': 'en-us'    # Default language model
 }
+
+# Define available language models and their corresponding Vosk model directories
+LANGUAGE_MODELS = {
+    'en-us': {
+        'small': 'vosk-model-small-en-us-0.15',
+        'large': 'vosk-model-en-us-0.22'
+    },
+    'en-in': {
+        'small': 'vosk-model-small-en-in-0.4',
+        'large': 'vosk-model-en-in-0.5'
+    }
+}
+
 
 # --- Audio & Vosk Settings ---
 SAMPLE_RATE = 16000
@@ -218,16 +235,24 @@ def list_audio_devices():
         print(f"Error listing audio devices: {e}", file=sys.stderr)
 
 
-# --- Refactored Helper Functions for Main Logic ---
+# --- Helper Functions for Main Logic ---
 
-def _load_configuration_and_args(config_file_path: str) -> dict:
+def _load_configuration_and_args(config_file_path: str, args: argparse.Namespace) -> dict:
     """
     Loads configuration from file and command-line arguments.
     If config file doesn't exist, prompts user for device index and creates it.
+    Also prompts for language model if not specified or invalid.
+    Handles fallback to US English models if selected Indian models are not found.
+    Ensures 'transcripts' is the default output directory.
+    Command-line arguments override config file settings.
     """
     cfg = CONFIG_DEFAULTS.copy()
+    config_exists = os.path.exists(config_file_path)
+    
+    # Flag to control device index prompting
+    prompt_for_device_selection = False
 
-    if os.path.exists(config_file_path):
+    if config_exists:
         print(f"Configuration loaded from '{config_file_path}'.")
         with open(config_file_path, 'r', encoding='utf-8') as f:
             for line in f:
@@ -238,84 +263,195 @@ def _load_configuration_and_args(config_file_path: str) -> dict:
                         cfg[k.strip()] = None
                     else:
                         cfg[k.strip()] = v.strip()
-        try:
-            cfg['device_index'] = int(cfg.get('device_index'))
-        except (ValueError, TypeError):
-            cfg['device_index'] = None
-    else:
+        
+        # Try to resolve device from config file (by name first, then index)
+        # Only if not overridden by command line arg --device-index
+        if args.device_index is None: 
+            if cfg.get('device_name'):
+                # Attempt to find device by stored name
+                found_by_name = False
+                for idx, dev in enumerate(sd.query_devices()):                    
+                    if dev['max_input_channels'] > 0 and dev['name'].lower() == cfg['device_name'].lower():
+                        cfg['device_index'] = idx # Use the current index for that name
+                        print(f"Found saved device '{cfg['device_name']}' at index {idx}.", file=sys.stderr)
+                        found_by_name = True
+                        break
+                if not found_by_name:
+                    print(f"Warning: Saved device '{cfg['device_name']}' not found by name.", file=sys.stderr)
+                    # Fallback to index if name lookup fails, but only if index is valid
+                    if cfg.get('device_index') is not None:
+                        try:
+                            int(cfg['device_index']) # Validate if it's still a number
+                            print(f"Attempting to use saved device index {cfg['device_index']}.", file=sys.stderr)
+                            # Let the final sd.query_devices check in main handle if this index is ambiguous
+                        except (ValueError, TypeError):
+                            cfg['device_index'] = None # Invalid index in config
+                            prompt_for_device_selection = True
+                    else:
+                        prompt_for_device_selection = True # No name, no valid index, so prompt
+            elif cfg.get('device_index') is not None: # No device_name, but old device_index exists
+                try:
+                    int(cfg['device_index']) # Validate if it's still a number
+                    # No prompt, assume it's valid for now, final sd.query_devices check will confirm
+                except (ValueError, TypeError):
+                    cfg['device_index'] = None
+                    prompt_for_device_selection = True
+            else: # Config exists but no device_name or device_index
+                prompt_for_device_selection = True
+        else: # args.device_index is provided, it takes precedence
+            cfg['device_index'] = args.device_index
+            # When device_index is explicitly given via command-line, device_name from config is ignored.
+            # We will try to resolve the name for saving, but not rely on it for lookup this run.
+            prompt_for_device_selection = False # No need to prompt, arg takes over
+
+    else: # Config file did not exist
         print(f"Configuration file '{config_file_path}' not found.", file=sys.stderr)
+        prompt_for_device_selection = True # Definitely prompt if no config file
+
+    # --- Prompt for Device Index if needed ---
+    if prompt_for_device_selection:
+        print(f"Please select an audio input device. {'(Config file not found or device invalid)' if not config_exists else ''}", file=sys.stderr)
         list_audio_devices()
         dev_idx_input = None
+        selected_dev_info = None
         while dev_idx_input is None:
             try:
                 dev_idx_input = int(input("Select audio input device index: "))
                 if dev_idx_input < 0:
                     raise ValueError
-            except ValueError:
+                # Validate the selected index against sounddevice.query_devices() to get full info and catch errors early
+                selected_dev_info = sd.query_devices(dev_idx_input, 'input')
+            except (ValueError, TypeError):
                 print("Invalid input. Please enter a number.", file=sys.stderr)
+                dev_idx_input = None
+            except sd.PortAudioError as e: # Catch specific sounddevice errors for invalid/ambiguous devices
+                print(f"Error selecting device: {e}. Please try another index.", file=sys.stderr)
                 dev_idx_input = None
 
         cfg['device_index'] = dev_idx_input
-        print(f"Device index {dev_idx_input} selected and will be saved to config.")
+        # Save the name of the selected device for more robust future lookups
+        cfg['device_name'] = selected_dev_info['name'] if selected_dev_info else None 
+        print(f"Device index {dev_idx_input} ('{cfg['device_name'] if cfg['device_name'] else 'Unknown'}') selected and will be saved to config.", file=sys.stderr)
 
-        try:
-            with open(config_file_path, 'w', encoding='utf-8') as f:
-                f.write("# This file contains configuration settings for the voice transcription script.\n")
-                f.write("# Lines starting with '#' are comments and are ignored.\n")
-                f.write("# Set 'device_index' to your preferred audio input device index.\n")
-                f.write("# Specify the paths to your Vosk model directories (must be extracted).\n")
-                f.write("# Set 'output_dir' to the desired directory for saving transcripts.\n\n")
-                
-                for key, value in CONFIG_DEFAULTS.items():
-                    if key == 'device_index':
-                        f.write(f"device_index = {cfg['device_index']}\n")
-                    elif value is None:
-                        f.write(f"{key} = None\n")
-                    else:
-                        f.write(f"{key} = {value}\n")
+
+    # --- Language Model Selection and Fallback Logic ---
+    # Determine the initial language preference
+    # Prioritize --language-model command-line arg. If not set, check config file.
+    initial_language_preference = args.language_model or cfg.get('language_model')
+
+    # If the language preference isn't a known model OR the config file didn't exist at all, prompt the user
+    if initial_language_preference not in LANGUAGE_MODELS or not config_exists:
+        # Only print the "Available language models" heading if the config file didn't exist,
+        # or if an invalid language_model was found in an existing config.
+        if not config_exists:
+            print("\nAvailable language models for English:", file=sys.stderr)
+            for lang_code in LANGUAGE_MODELS.keys():
+                print(f"  - {lang_code}", file=sys.stderr)
+        elif initial_language_preference not in LANGUAGE_MODELS: # Print if config exists but language_model is invalid
+             print(f"Invalid language_model '{initial_language_preference}' found in config. Please select again.", file=sys.stderr)
+             print("\nAvailable language models for English:", file=sys.stderr)
+             for lang_code in LANGUAGE_MODELS.keys():
+                print(f"  - {lang_code}", file=sys.stderr)
+
+        lang_input = None
+        while lang_input not in LANGUAGE_MODELS:
+            lang_input = input(f"Select a language model ({'/'.join(LANGUAGE_MODELS.keys())}, default 'en-us'): ").strip().lower()
+            if not lang_input:  # Handle empty input, default to 'en-us'
+                lang_input = 'en-us'
+            if lang_input not in LANGUAGE_MODELS:
+                print("Invalid language model. Please choose from the list or press Enter for default.", file=sys.stderr)
+        cfg['language_model'] = lang_input
+        print(f"Language model '{lang_input}' selected and will be saved to config.", file=sys.stderr)
+    else:
+        cfg['language_model'] = initial_language_preference # Use the preference found (from arg or config)
+
+    # Determine the model paths based on the selected language model
+    # This 'chosen_models' will provide the default paths for the selected language
+    chosen_models = LANGUAGE_MODELS.get(cfg['language_model'], LANGUAGE_MODELS['en-us'])
+
+    # Initialize final model paths, prioritizing command-line arguments
+    final_small_model_path = args.small_model_path
+    final_large_model_path = args.large_model_path
+
+    # If command-line arguments for model paths were NOT provided,
+    # then use the paths from the loaded config. If config paths are invalid/missing,
+    # then use the paths from the selected language model.
+    if not final_small_model_path:
+        if cfg.get('small_model_path') and os.path.isdir(cfg['small_model_path']):
+            final_small_model_path = cfg['small_model_path']
+        else:
+            final_small_model_path = chosen_models['small']
+            print(f"Using default small model path for '{cfg['language_model']}': {final_small_model_path}", file=sys.stderr)
+            
+    if not final_large_model_path:
+        if cfg.get('large_model_path') and os.path.isdir(cfg['large_model_path']):
+            final_large_model_path = cfg['large_model_path']
+        else:
+            final_large_model_path = chosen_models['large']
+            # print(f"Using default large model path for '{cfg['language_model']}': {final_large_model_path}", file=sys.stderr) # Can be noisy
+
+
+    # Final existence checks and fallbacks for models
+    if not os.path.isdir(final_small_model_path):
+        print(f"Error: Small Vosk model not found at '{final_small_model_path}'. Please download and extract it.", file=sys.stderr)
+        sys.exit(1) # Small model is mandatory
+
+    if final_large_model_path and not os.path.isdir(final_large_model_path):
+        print(f"Warning: High-accuracy Vosk model not found at '{final_large_model_path}'. "
+              "Application will proceed using only the fast model.", file=sys.stderr)
+        final_large_model_path = None # Set to None for only small model usage
+
+    cfg['small_model_path'] = final_small_model_path
+    cfg['large_model_path'] = final_large_model_path
+    
+    # Output directory logic: Command line arg has highest priority
+    # If not provided via command line, use value from config file, otherwise default to 'transcripts'
+    cfg['output_dir'] = args.output_dir if args.output_dir is not None else cfg.get('output_dir', 'transcripts')
+
+
+    # Write/rewrite the config file with selected settings
+    try:
+        with open(config_file_path, 'w', encoding='utf-8') as f:
+            f.write("# This file contains configuration settings for the voice transcription script.\n")
+            f.write("# Lines starting with '#' are comments and are ignored.\n")
+            f.write("# Set 'device_index' to your preferred audio input device index.\n")
+            f.write("# Set 'device_name' to your preferred audio input device name for robust selection.\n") # NEW comment
+            f.write("# Specify the paths to your Vosk model directories (must be extracted).\n")
+            f.write("# Set 'output_dir' to the desired directory for saving transcripts.\n")
+            f.write("# Set 'language_model' to specify the accent/language (e.g., 'en-us', 'en-in').\n\n")
+            
+            f.write(f"device_index = {cfg['device_index']}\n")
+            f.write(f"device_name = {cfg['device_name'] if cfg['device_name'] else 'None'}\n") # NEW: Write device_name
+            f.write(f"small_model_path = {cfg['small_model_path']}\n")
+            f.write(f"large_model_path = {cfg['large_model_path'] if cfg['large_model_path'] else 'None'}\n")
+            f.write(f"output_dir = {cfg['output_dir']}\n")
+            f.write(f"language_model = {cfg['language_model']}\n")
+        if not config_exists:
             print(f"Default config file created at '{config_file_path}'.", file=sys.stderr)
-        except IOError as e:
-            print(f"Error creating config file '{config_file_path}': {e}", file=sys.stderr)
-            sys.exit(1)
+    except IOError as e:
+        print(f"Error creating config file '{config_file_path}': {e}", file=sys.stderr)
+        sys.exit(1)
 
     return cfg
 
-
-def _validate_model_paths(small_model_path: str, large_model_path: str) -> str:
+def _setup_session_directories(output_base_dir: str) -> tuple[str, str]:
     """
-    Validates the existence of Vosk model directories.
-    Returns the large_model_path if valid, otherwise None.
-    Exits if the small model is not found.
-    """
-    if not os.path.isdir(small_model_path):
-        print(f"Error: Small Vosk model not found at '{small_model_path}'. Please download and extract it.", file=sys.stderr)
-        sys.exit(1)
-
-    if large_model_path and not os.path.isdir(large_model_path):
-        print(f"Warning: High-accuracy Vosk model not found at '{large_model_path}'. "
-              "Please download and extract it. Application will only use the fast model.", file=sys.stderr)
-        return None
-    return large_model_path
-
-
-def _setup_session_directories(output_base_dir: str | None) -> tuple[str, str]:
-    """
-    Sets up the timestamped session and utterance directories.
+    Sets up the timestamped session and utterance directories directly under the output_base_dir.
     Returns a tuple: (base_session_dir, utterances_dir).
     """
-    if output_base_dir:
-        sessions_root = os.path.join(output_base_dir, 'sessions')
-    else:
-        sessions_root = 'sessions'
+    # Use output_base_dir directly as the root for session folders
+    sessions_root = output_base_dir 
 
     os.makedirs(sessions_root, exist_ok=True)
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+    
+    # The base directory for the session will now be directly under output_base_dir
     base_dir = os.path.join(sessions_root, f"session_{ts}")
     os.makedirs(base_dir, exist_ok=True)
+    
     utter_dir = os.path.join(base_dir, 'utterances')
     os.makedirs(utter_dir, exist_ok=True)
     return base_dir, utter_dir
-
 
 def _initialize_vosk_recognizers(small_model_path: str, large_model_path: str | None, sample_rate: int) -> tuple[vosk.KaldiRecognizer, threading.Event, list]:
     """
@@ -394,7 +530,7 @@ def _process_audio_stream(
 ):
     """
     Handles the main audio processing loop, Vosk recognition, and console display.
-    Manages model switching and forced flushing in batch display mode.
+    Manages model switching and forced flushing in batch mode.
     """
     _current_recognizer = initial_recognizer
     switched_to_large_model = False
@@ -664,52 +800,50 @@ def main():
                     "Use --immediate-display for real-time partial results (may have visual artifacts).\n"
                     "Output wraps naturally. Ctrl+Alt+Space to finish.")
     parser.add_argument("--config", default=CONFIG_FILE, help="Path to the configuration file.")
-    parser.add_argument("--device-index", type=int, help="Specify audio input device index.")
+    parser.add_argument("--device-index", type=int, help="Specify audio input device index (overrides config).")
     parser.add_argument("--small-model-path", help="Path to the small Vosk model directory.")
     parser.add_argument("--large-model-path", help="Path to the large Vosk model directory (high accuracy).")
     parser.add_argument("--output-dir", help="Directory to save session transcripts.")
-    # NEW ARGUMENT: If this flag is present, it means immediate display is desired.
     parser.add_argument("--immediate-display", action="store_true",
                         help="Enable immediate display of partial results. Batch display is default.")
+    parser.add_argument("--language-model", help="Specify the accent-specific language model to use (e.g., 'en-us', 'en-in'). This will dynamically select model paths unless explicitly provided.")
     args = parser.parse_args()
 
     # 2. Load Configuration from file or create it interactively
-    cfg = _load_configuration_and_args(args.config)
+    cfg = _load_configuration_and_args(args.config, args)
 
-    # Override config settings with command-line arguments if provided
-    dev_idx = args.device_index if args.device_index is not None else cfg['device_index']
-    small_model_path = args.small_model_path or cfg['small_model_path']
-    large_model_path_candidate = args.large_model_path or cfg['large_model_path']
-    output_dir = args.output_dir if args.output_dir is not None else cfg['output_dir']
+    # Retrieve final determined values from cfg
+    dev_idx = cfg['device_index']
+    small_model_path = cfg['small_model_path']
+    large_model_path = cfg['large_model_path']
+    output_dir = cfg['output_dir']
     
     # DETERMINE DISPLAY MODE: batch_display_mode is TRUE by default.
     # It becomes FALSE only if --immediate-display is present.
     batch_display_mode = not args.immediate_display
 
-    # 3. Validate Model Paths
-    final_large_model_path = _validate_model_paths(small_model_path, large_model_path_candidate)
-
-    # 4. Initialize Vosk Recognizers (Small immediately, Large in background thread)
-    initial_recognizer, large_model_loaded_event, large_recognizer_container = \
-        _initialize_vosk_recognizers(small_model_path, final_large_model_path, SAMPLE_RATE)
-
-    # 5. Final Audio Device Selection Check
+    # 3. Final Audio Device Selection Check (This check is primarily handled proactively in _load_configuration_and_args now)
     try:
+        # A final check to ensure the chosen device index is still valid just before stream opening
         sd.query_devices(dev_idx, 'input')
     except Exception as e:
         print(f"Error: Selected audio device index {dev_idx} is not valid for input: {e}", file=sys.stderr)
         sys.exit(1)
 
-    # 6. Setup Session Directories
+    # 4. Initialize Vosk Recognizers (Small immediately, Large in background thread)
+    initial_recognizer, large_model_loaded_event, large_recognizer_container = \
+        _initialize_vosk_recognizers(small_model_path, large_model_path, SAMPLE_RATE)
+
+    # 5. Setup Session Directories
     session_base_dir, utterance_dir = _setup_session_directories(output_dir)
     print(f"Recording from device {dev_idx}. Session folder: {session_base_dir}")
 
-    # 7. Start Hotkey Listener
+    # 6. Start Hotkey Listener
     _start_hotkey_listener()
 
     transcripts = [] # List to accumulate all transcribed utterances
 
-    # 8. Process Audio Stream (Main Transcription Loop)
+    # 7. Process Audio Stream (Main Transcription Loop)
     transcripts, current_line_buffer, has_printed_to_current_line, final_recognizer_used = \
         _process_audio_stream(
             dev_idx=dev_idx,
@@ -722,7 +856,7 @@ def main():
             large_recognizer_container=large_recognizer_container
         )
 
-    # 9. Finalize Session (Save Transcript to Disk and perform final console cleanup)
+    # 8. Finalize Session (Save Transcript to Disk and perform final console cleanup)
     _finalize_session(
         transcripts=transcripts,
         base_dir=session_base_dir,
@@ -735,4 +869,3 @@ def main():
 
 if __name__=='__main__':
     main()
-
