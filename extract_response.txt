@@ -1,0 +1,169 @@
+
+########################################################################
+# extract_text_between_tags($text, $tag, %opts)
+########################################################################
+#
+# Extracts content from Large Language Model (LLM) responses enclosed within
+# specified tags. This function is designed to be robust against common LLM
+# formatting mistakes.
+#
+# Parameters:
+#   $text (scalar): The LLM's response string.
+#   $tag (scalar): The name of the tag to extract (e.g., 'answer', 'comments').
+#                  Case-insensitivity is handled internally.
+#   %opts (hash, optional): A hash of optional parameters to control extraction behavior.
+#       strict (boolean): If set to `1`, requires both opening and closing tags.
+#                         Defaults to `0` (flexible).
+#
+# Returns:
+#   The extracted and cleaned content as a scalar string.
+#   Returns an empty string ('''') if:
+#     - No content for the specified tag can be robustly extracted.
+#     - The `strict` option is enabled, and a perfect opening/closing tag pair is not found.
+#
+# Key Features:
+#   - Flexible Tag Matching: Handles tags like `< answer >` or `< /answer >` by
+#     normalizing whitespace. Also corrects common misspellings for 'answer' tags.
+#   - LLM-Specific Cleanup: Removes `<model>...</model>` blocks and infers a missing
+#     `</answer>` tag if it's followed by `<comments>` or `<thinking>` tags.
+#   - Intelligent Boundary Handling: Extracts content even if only the opening or
+#     closing tag is present (in flexible mode), extending to string boundaries or
+#     semantic markers like `<comments>`.
+#   - Optional Strict Mode: Use `strict => 1` to ensure only perfectly matched tag
+#     pairs are extracted.
+#
+########################################################################
+
+sub extract_text_between_tags {
+    my ($text, $tag, %opts) = @_;
+    my $lc_tag = lc $tag;
+    my $strict_mode = $opts{strict} // 0; # Defaults to flexible extraction
+
+    my $open_tag_canonical = "<" . $lc_tag . ">";   # The standard form for our searches
+    my $close_tag_canonical = "</" . $lc_tag . ">"; # The standard form for our searches
+
+    my $temp_text = $text; # Work on a temporary copy to allow modifications
+    my $temp_text_lc;      # Will hold the lowercased, normalized version for searching
+
+    # --- 1. Normalize tags for flexibility against LLM whitespace/misspelling mistakes ---
+    # This step intelligently converts variations like "< answer >" or "< /answer >"
+    # into their canonical forms "<answer>" and "</answer>" before any searching.
+    # It also handles optional attributes within the tags.
+    $temp_text =~ s{<\s*\Q$lc_tag\E\s*[^>]*>}{$open_tag_canonical}gi;
+    $temp_text =~ s{<\s*\/\s*\Q$lc_tag\E\s*[^>]*>}{$close_tag_canonical}gi;
+
+    if ($lc_tag eq 'answer') {
+        # Specific normalization for common 'answer' tag misspellings (with optional attributes)
+        $temp_text =~ s/<answe?r?[^>]*>/<answer>/gi;
+        $temp_text =~ s/<\/answe?r?[^>]*>/<\/answer>/gi;
+        $temp_text =~ s/<answers?>/<answer>/gi;
+        $temp_text =~ s/<\/answers?>/<\/answer>/gi;
+    }
+
+    # Always generate the lowercased version of the *normalized* text for case-insensitive searching
+    $temp_text_lc = lc $temp_text;
+
+    # --- 2. LLM-Specific Special Handling for <answer> tag ---
+    if ($lc_tag eq 'answer') {
+        # a) Robustly remove <model> </model> blocks:
+        # Normalize <model> tags themselves first, for maximum reliability (with optional attributes)
+        $temp_text =~ s{<\s*model\s*[^>]*>}{<model>}gi;
+        $temp_text =~ s{<\s*\/\s*model\s*[^>]*>}{</model>}gi;
+        $temp_text_lc = lc $temp_text; # Re-lowercase after model normalization
+
+        my $start = index($temp_text_lc, '<model>');
+        while ($start >= 0) {
+            my $end = index($temp_text_lc, '</model>', $start);
+            last if $end < 0; # No matching closing </model> found
+
+            # Remove the <model> block from both the content and the search copy
+            # +8 accounts for the length of '</model>'
+            substr($temp_text, $start, $end - $start + 8, '');
+            substr($temp_text_lc, $start, $end - $start + 8, '');
+
+            # Search for the next <model> from the current position (as string length changed)
+            $start = index($temp_text_lc, '<model>', $start);
+        }
+
+        # b) Imply </answer> if <comments> or <thinking> tag is found and </answer> is missing:
+        # Normalize <comments> and <thinking> tags as well, for robustness (with optional attributes)
+        $temp_text =~ s{<\s*comments\s*[^>]*>}{<comments>}gi;
+        $temp_text =~ s{<\s*thinking\s*[^>]*>}{<thinking>}gi;
+        $temp_text_lc = lc $temp_text; # Re-lowercase after these normalizations
+
+        if (index($temp_text_lc, $close_tag_canonical) < 0) { # If </answer> is still not found
+            my $cpos = index($temp_text_lc, '<comments>');
+            my $tpos = index($temp_text_lc, '<thinking>');
+            my $boundary_pos = -1;
+
+            # Find the earliest of <comments> or <thinking>
+            if ($cpos >= 0 && ($tpos < 0 || $cpos < $tpos)) {
+                $boundary_pos = $cpos;
+            } elsif ($tpos >= 0) {
+                $boundary_pos = $tpos;
+            }
+
+            if ($boundary_pos >= 0) {
+                # Inject the missing </answer> right before the detected boundary tag
+                substr($temp_text, $boundary_pos, 0, $close_tag_canonical);
+                $temp_text_lc = lc $temp_text; # Crucial: refresh after injection
+            }
+        }
+    }
+
+    # --- 3. Intelligent Content Extraction Logic ---
+    # Find the positions of the canonical (and now normalized) open/close tags
+    my $s_pos = index($temp_text_lc, $open_tag_canonical);
+    my $e_pos = index($temp_text_lc, $close_tag_canonical);
+    my $extracted_content;
+
+    if ($s_pos >= 0 && $e_pos >= 0 && $e_pos > $s_pos) {
+        # Case 1: Perfect match - Both tags found and in correct order
+        $extracted_content = substr(
+            $temp_text,
+            $s_pos + length($open_tag_canonical),
+            $e_pos - ($s_pos + length($open_tag_canonical))
+        );
+    } elsif ($strict_mode) {
+        # Case 2: Strict mode is active, but a perfect match was NOT found.
+        # Immediately return empty content as per strict requirement.
+        $extracted_content = "";
+    } elsif ($s_pos >= 0 && $e_pos < 0) {
+        # Case 3: Flexible mode - Only opening tag found.
+        # Content is extracted from the tag to the end of the string.
+        # For 'answer' tag, stop at other known semantic boundary tags if they appear later.
+        $extracted_content = substr($temp_text, $s_pos + length($open_tag_canonical));
+        if ($lc_tag eq 'answer') {
+            # Define specific boundary tags where an answer should semantically end
+            my @boundaries = (
+                '<comments>', '<thinking>', '<model>',
+                # Add other common end-of-answer markers if your LLM uses them, e.g., "\n\n---"
+            );
+            my $min_boundary_pos = length($extracted_content);
+            for my $boundary_tag (@boundaries) {
+                my $pos = index(lc($extracted_content), $boundary_tag);
+                if ($pos >= 0 && $pos < $min_boundary_pos) {
+                    $min_boundary_pos = $pos;
+                }
+            }
+            $extracted_content = substr($extracted_content, 0, $min_boundary_pos);
+        }
+    } elsif ($s_pos < 0 && $e_pos >= 0) {
+        # Case 4: Flexible mode - Only closing tag found.
+        # Content is extracted from the beginning of the string up to the tag.
+        $extracted_content = substr($temp_text, 0, $e_pos);
+    } else {
+        # Case 5: Neither tag found at all (or tags were reversed in an unrecoverable way).
+        # This is the clear signal that no content for the requested tag was present.
+        $extracted_content = "";
+    }
+
+    # --- 4. Post-Extraction Cleanup ---
+    # Trim any leading or trailing whitespace from the extracted content
+    $extracted_content =~ s/^\s+|\s+$//g;
+
+    # Remove non-ASCII characters (as per your original requirement)
+    $extracted_content = remove_non_ascii($extracted_content);
+
+    return $extracted_content;
+}
